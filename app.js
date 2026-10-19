@@ -3,22 +3,6 @@ import { DEFAULT_WEEK, DAY_NAMES, todayISO, emptyLog, isDone, computeStreak } fr
 
 const state = { week:null, logs:{}, bestStreak:0, view:'today', editingDay:new Date().getDay(), calMonth:new Date() };
 
-async function boot() {
-  state.week = (await getItem('config','week')) || DEFAULT_WEEK;
-  const logs = await getAll('logs');
-  state.logs = Object.fromEntries(logs.map(l => [l.date, l]));
-  state.bestStreak = (await getItem('config','bestStreak')) || 0;
-  render();
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker
-        .register('./sw.js', { scope: './' })
-        .then((reg) => console.log('[SW] registrado, scope:', reg.scope))
-        .catch((err) => console.error('[SW] falló:', err));
-    });
-  }
-}
-
 async function saveLog(date, log) {
   log.date = date;
   state.logs[date] = log;
@@ -29,7 +13,7 @@ async function saveLog(date, log) {
 
 function getWeeklyProgress() {
   const now = new Date();
-  const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
+  const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay(); // 1 = Lunes, 7 = Domingo
   const startOfWeek = new Date(now);
   startOfWeek.setDate(now.getDate() - dayOfWeek + 1);
   startOfWeek.setHours(0,0,0,0);
@@ -50,6 +34,60 @@ function getWeeklyProgress() {
   }
   const pct = workoutDays === 0 ? 0 : Math.round((completedDays / workoutDays) * 100);
   return { completedDays, workoutDays, pct };
+}
+
+let timerInterval = null;
+
+function startRestTimer(seconds = 90) {
+  const timerEl = document.getElementById('rest-timer');
+  const display = document.getElementById('timer-display');
+  if (!timerEl || !display) return;
+  
+  timerEl.classList.remove('hidden');
+  let timeLeft = seconds;
+
+  const updateDisplay = () => {
+    const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+    const s = (timeLeft % 60).toString().padStart(2, '0');
+    display.textContent = `${m}:${s}`;
+  };
+  
+  updateDisplay();
+  if (timerInterval) clearInterval(timerInterval);
+
+  timerInterval = setInterval(() => {
+    timeLeft--;
+    updateDisplay();
+    if (timeLeft <= 0) {
+      stopRestTimer();
+      playBeep();
+    }
+  }, 1000);
+}
+
+function stopRestTimer() {
+  clearInterval(timerInterval);
+  document.getElementById('rest-timer')?.classList.add('hidden');
+}
+
+function playBeep() {
+  if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+  
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    oscillator.type = 'sine';
+    oscillator.frequency.value = 880;
+    gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + 0.5);
+  } catch (e) {
+    console.log('Audio no soportado');
+  }
 }
 
 function viewToday() {
@@ -207,22 +245,34 @@ function render() {
 }
 
 function bind() {
+  
   document.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => { state.view = b.dataset.tab; render(); });
 
-   document.querySelectorAll('[data-ex]').forEach(cb => cb.onchange = async () => {
+  
+  document.querySelectorAll('[data-ex]').forEach(cb => cb.onchange = async () => {
     const iso = todayISO();
     const log = state.logs[iso] || emptyLog(iso);
     const id = cb.dataset.ex;
     log.completed = cb.checked ? [...new Set([...log.completed, id])] : log.completed.filter(x => x !== id);
     await saveLog(iso, log); 
     
-    if (cb.checked) {
-      startRestTimer(90);
-    }
-    
+    if (cb.checked) startRestTimer(90);
     render();
   });
 
+  document.querySelector('[data-action="complete-day"]')?.addEventListener('click', async () => {
+    const iso = todayISO();
+    const log = state.logs[iso] || emptyLog(iso);
+    log.done = true; await saveLog(iso, log); render();
+  });
+
+  document.querySelector('[data-action="rest-done"]')?.addEventListener('click', async () => {
+    const iso = todayISO();
+    const log = state.logs[iso] || emptyLog(iso);
+    log.restDone = true; await saveLog(iso, log); render();
+  });
+
+  
   document.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { state.editingDay = +b.dataset.day; render(); });
   document.getElementById('mode-select')?.addEventListener('change', e => {
     state.week[state.editingDay] = e.target.value === 'rest'
@@ -257,69 +307,16 @@ function bind() {
     alert('Guardado ✓');
   });
 
+  
   document.querySelector('[data-action="prev-month"]')?.addEventListener('click', () => {
     state.calMonth = new Date(state.calMonth.getFullYear(), state.calMonth.getMonth()-1, 1); render();
   });
   document.querySelector('[data-action="next-month"]')?.addEventListener('click', () => {
     state.calMonth = new Date(state.calMonth.getFullYear(), state.calMonth.getMonth()+1, 1); render();
   });
-    document.getElementById('timer-skip')?.addEventListener('click', stopRestTimer);
-}
 
-let timerInterval = null;
-
-function startRestTimer(seconds = 90) {
-  const timerEl = document.getElementById('rest-timer');
-  const display = document.getElementById('timer-display');
-  if (!timerEl || !display) return;
   
-  timerEl.classList.remove('hidden');
-  let timeLeft = seconds;
-
-  const updateDisplay = () => {
-    const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
-    const s = (timeLeft % 60).toString().padStart(2, '0');
-    display.textContent = `${m}:${s}`;
-  };
-  
-  updateDisplay();
-  if (timerInterval) clearInterval(timerInterval);
-
-  timerInterval = setInterval(() => {
-    timeLeft--;
-    updateDisplay();
-    if (timeLeft <= 0) {
-      stopRestTimer();
-      playBeep();
-    }
-  }, 1000);
-}
-
-function stopRestTimer() {
-  clearInterval(timerInterval);
-  document.getElementById('rest-timer')?.classList.add('hidden');
-}
-
-function playBeep() {
-  // Vibración en Android (si el dispositivo lo soporta)
-  if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
-  
-  // Sonido generado por código (sin necesidad de archivos mp3)
-  try {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    oscillator.type = 'sine';
-    oscillator.frequency.value = 880; // Tono agudo (A5)
-    gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
-    oscillator.start();
-    oscillator.stop(audioCtx.currentTime + 0.5);
-  } catch (e) {
-    console.log('Audio no soportado en este navegador');
-  }
+  document.getElementById('timer-skip')?.addEventListener('click', stopRestTimer);
 }
 
 function esc(s) {
@@ -327,7 +324,7 @@ function esc(s) {
 }
 
 async function boot() {
-  // Leer si venimos de un App Shortcut
+
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('view')) {
     state.view = urlParams.get('view');
@@ -337,6 +334,7 @@ async function boot() {
   const logs = await getAll('logs');
   state.logs = Object.fromEntries(logs.map(l => [l.date, l]));
   state.bestStreak = (await getItem('config','bestStreak')) || 0;
+  
   render();
   
   if ('serviceWorker' in navigator) {
@@ -347,3 +345,6 @@ async function boot() {
     });
   }
 }
+
+
+boot();
