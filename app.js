@@ -27,14 +27,51 @@ async function saveLog(date, log) {
   if (s > state.bestStreak) { state.bestStreak = s; await setItem('config','bestStreak', s); }
 }
 
+function getWeeklyProgress() {
+  const now = new Date();
+  const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - dayOfWeek + 1);
+  startOfWeek.setHours(0,0,0,0);
+
+  let workoutDays = 0;
+  let completedDays = 0;
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(startOfWeek);
+    d.setDate(startOfWeek.getDate() + i);
+    const iso = todayISO(d);
+    const cfg = state.week[d.getDay()];
+    
+    if (cfg.mode === 'workout') {
+      workoutDays++;
+      if (state.logs[iso]?.done) completedDays++;
+    }
+  }
+  const pct = workoutDays === 0 ? 0 : Math.round((completedDays / workoutDays) * 100);
+  return { completedDays, workoutDays, pct };
+}
+
 function viewToday() {
   const today = new Date();
   const iso = todayISO(today);
   const cfg = state.week[today.getDay()];
   const log = state.logs[iso] || emptyLog(iso);
+  const weekly = getWeeklyProgress();
+
+  const weeklyWidget = `
+    <div class="weekly-widget">
+      <h3>Progreso Semanal</h3>
+      <div class="weekly-bar"><div style="width:${weekly.pct}%"></div></div>
+      <div class="weekly-stats">
+        <span>${weekly.completedDays} de ${weekly.workoutDays} entrenamientos</span>
+        <span>${weekly.pct}%</span>
+      </div>
+    </div>
+  `;
 
   if (cfg.mode === 'rest') {
-    return `<div class="card">
+    return weeklyWidget + `<div class="card">
       <h2>🧘‍♂️ ${cfg.restType === 'total' ? 'Descanso Total' : 'Descanso Activo'}</h2>
       <p class="muted" style="margin-bottom:12px">${cfg.note || 'Día de recuperación.'}</p>
       ${log.restDone
@@ -44,7 +81,7 @@ function viewToday() {
   }
 
   if (log.done) {
-    return `<div class="card">
+    return weeklyWidget + `<div class="card">
       <h2>${cfg.name}</h2>
       <div class="msg-done"><div class="emoji">✅</div><h3>¡Rutina del día completada!</h3>
       <p>Nos vemos mañana. Descansa y recupera.</p></div></div>`;
@@ -54,7 +91,7 @@ function viewToday() {
   const done = log.completed.length;
   const pct = total ? Math.round(done/total*100) : 0;
 
-  return `<div class="card">
+  return weeklyWidget + `<div class="card">
     <h2>${cfg.name}</h2>
     <div class="progress"><div style="width:${pct}%"></div></div>
     <p class="muted" style="font-size:13px;margin-bottom:8px">${done} de ${total} · ${pct}%</p>
@@ -172,22 +209,18 @@ function render() {
 function bind() {
   document.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => { state.view = b.dataset.tab; render(); });
 
-  document.querySelectorAll('[data-ex]').forEach(cb => cb.onchange = async () => {
+   document.querySelectorAll('[data-ex]').forEach(cb => cb.onchange = async () => {
     const iso = todayISO();
     const log = state.logs[iso] || emptyLog(iso);
     const id = cb.dataset.ex;
     log.completed = cb.checked ? [...new Set([...log.completed, id])] : log.completed.filter(x => x !== id);
-    await saveLog(iso, log); render();
-  });
-  document.querySelector('[data-action="complete-day"]')?.addEventListener('click', async () => {
-    const iso = todayISO();
-    const log = state.logs[iso] || emptyLog(iso);
-    log.done = true; await saveLog(iso, log); render();
-  });
-  document.querySelector('[data-action="rest-done"]')?.addEventListener('click', async () => {
-    const iso = todayISO();
-    const log = state.logs[iso] || emptyLog(iso);
-    log.restDone = true; await saveLog(iso, log); render();
+    await saveLog(iso, log); 
+    
+    if (cb.checked) {
+      startRestTimer(90);
+    }
+    
+    render();
   });
 
   document.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { state.editingDay = +b.dataset.day; render(); });
@@ -230,10 +263,87 @@ function bind() {
   document.querySelector('[data-action="next-month"]')?.addEventListener('click', () => {
     state.calMonth = new Date(state.calMonth.getFullYear(), state.calMonth.getMonth()+1, 1); render();
   });
+    document.getElementById('timer-skip')?.addEventListener('click', stopRestTimer);
+}
+
+let timerInterval = null;
+
+function startRestTimer(seconds = 90) {
+  const timerEl = document.getElementById('rest-timer');
+  const display = document.getElementById('timer-display');
+  if (!timerEl || !display) return;
+  
+  timerEl.classList.remove('hidden');
+  let timeLeft = seconds;
+
+  const updateDisplay = () => {
+    const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+    const s = (timeLeft % 60).toString().padStart(2, '0');
+    display.textContent = `${m}:${s}`;
+  };
+  
+  updateDisplay();
+  if (timerInterval) clearInterval(timerInterval);
+
+  timerInterval = setInterval(() => {
+    timeLeft--;
+    updateDisplay();
+    if (timeLeft <= 0) {
+      stopRestTimer();
+      playBeep();
+    }
+  }, 1000);
+}
+
+function stopRestTimer() {
+  clearInterval(timerInterval);
+  document.getElementById('rest-timer')?.classList.add('hidden');
+}
+
+function playBeep() {
+  // Vibración en Android (si el dispositivo lo soporta)
+  if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+  
+  // Sonido generado por código (sin necesidad de archivos mp3)
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    oscillator.type = 'sine';
+    oscillator.frequency.value = 880; // Tono agudo (A5)
+    gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + 0.5);
+  } catch (e) {
+    console.log('Audio no soportado en este navegador');
+  }
 }
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-boot();
+async function boot() {
+  // Leer si venimos de un App Shortcut
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('view')) {
+    state.view = urlParams.get('view');
+  }
+
+  state.week = (await getItem('config','week')) || DEFAULT_WEEK;
+  const logs = await getAll('logs');
+  state.logs = Object.fromEntries(logs.map(l => [l.date, l]));
+  state.bestStreak = (await getItem('config','bestStreak')) || 0;
+  render();
+  
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js', { scope: './' })
+        .then((reg) => console.log('[SW] registrado, scope:', reg.scope))
+        .catch((err) => console.error('[SW] falló:', err));
+    });
+  }
+}
