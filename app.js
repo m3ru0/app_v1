@@ -10,12 +10,13 @@ async function boot() {
   state.bestStreak = (await getItem('config','bestStreak')) || 0;
   render();
   if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('./sw.js', { scope: './' })   // ⬅️ ruta relativa + scope explícito
-      .then((reg) => console.log('[SW] registrado, scope:', reg.scope))
-      .catch((err) => console.error('[SW] falló:', err));
-  });
+    window.addEventListener('load', () => {
+      navigator.serviceWorker
+        .register('./sw.js', { scope: './' })
+        .then((reg) => console.log('[SW] registrado, scope:', reg.scope))
+        .catch((err) => console.error('[SW] falló:', err));
+    });
+  }
 }
 
 async function saveLog(date, log) {
@@ -171,7 +172,6 @@ function render() {
 function bind() {
   document.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => { state.view = b.dataset.tab; render(); });
 
-  
   document.querySelectorAll('[data-ex]').forEach(cb => cb.onchange = async () => {
     const iso = todayISO();
     const log = state.logs[iso] || emptyLog(iso);
@@ -190,7 +190,6 @@ function bind() {
     log.restDone = true; await saveLog(iso, log); render();
   });
 
-  
   document.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { state.editingDay = +b.dataset.day; render(); });
   document.getElementById('mode-select')?.addEventListener('change', e => {
     state.week[state.editingDay] = e.target.value === 'rest'
@@ -198,7 +197,7 @@ function bind() {
       : { mode:'workout', name:'Nueva rutina', exercises:[] };
     render();
   });
-  
+
   const cfg = state.week[state.editingDay];
   if (cfg.mode === 'workout') {
     document.getElementById('routine-name').oninput = e => cfg.name = e.target.value;
@@ -225,7 +224,6 @@ function bind() {
     alert('Guardado ✓');
   });
 
-  
   document.querySelector('[data-action="prev-month"]')?.addEventListener('click', () => {
     state.calMonth = new Date(state.calMonth.getFullYear(), state.calMonth.getMonth()-1, 1); render();
   });
