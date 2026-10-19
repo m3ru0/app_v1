@@ -3,31 +3,43 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#14142b">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="robots" content="noindex, nofollow">
   <title>Rutinas</title>
- <link rel="manifest" href="./manifest.webmanifest.json">
-<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
-<link rel="mobile-touch-icon" href="./icons/icon-192.png">
+  
+  <!-- Fuente estilo cartoon/redondeada -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800;900&display=swap" rel="stylesheet">
+
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
   <header id="app-header"></header>
   <main id="app"></main>
+  
   <nav id="tabbar">
-    <button data-tab="today">Hoy</button>
-    <button data-tab="editor">Rutina</button>
-    <button data-tab="history">Historial</button>
+    <button data-tab="today"><span>🔥</span> Hoy</button>
+    <button data-tab="editor"><span>📝</span> Rutina</button>
+    <button data-tab="history"><span>📊</span> Historial</button>
   </nav>
-    <div id="rest-timer" class="hidden">
+
+  <!-- Temporizador Flotante -->
+  <div id="rest-timer" class="hidden">
     <div class="timer-info">
       <span>Descanso</span>
       <span id="timer-display">01:30</span>
     </div>
     <button id="timer-skip">Saltar</button>
   </div>
+
   <script type="module" src="app.js"></script>
 </body>
 </html>
