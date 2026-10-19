@@ -35,5 +35,19 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Iniciar rutina de hoy",
+      "short_name": "Rutina Hoy",
+      "url": "./?view=today",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Ver Historial",
+      "short_name": "Historial",
+      "url": "./?view=history",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
   ]
 }
