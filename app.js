@@ -20,8 +20,6 @@ async function saveLog(date, log) {
   if (s > state.bestStreak) { state.bestStreak = s; await setItem('config','bestStreak', s); }
 }
 
-/* ---------- VISTAS ---------- */
-
 function viewToday() {
   const today = new Date();
   const iso = todayISO(today);
@@ -150,8 +148,6 @@ function viewHistory() {
   </div>`;
 }
 
-/* ---------- RENDER + EVENTOS ---------- */
-
 function render() {
   const today = new Date();
   const streak = computeStreak(state.logs, state.week);
@@ -169,7 +165,7 @@ function render() {
 function bind() {
   document.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => { state.view = b.dataset.tab; render(); });
 
-  // Hoy
+  
   document.querySelectorAll('[data-ex]').forEach(cb => cb.onchange = async () => {
     const iso = todayISO();
     const log = state.logs[iso] || emptyLog(iso);
@@ -188,7 +184,7 @@ function bind() {
     log.restDone = true; await saveLog(iso, log); render();
   });
 
-  // Editor
+  
   document.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { state.editingDay = +b.dataset.day; render(); });
   document.getElementById('mode-select')?.addEventListener('change', e => {
     state.week[state.editingDay] = e.target.value === 'rest'
@@ -196,7 +192,7 @@ function bind() {
       : { mode:'workout', name:'Nueva rutina', exercises:[] };
     render();
   });
-  // sync inputs → estado en vivo
+  
   const cfg = state.week[state.editingDay];
   if (cfg.mode === 'workout') {
     document.getElementById('routine-name').oninput = e => cfg.name = e.target.value;
@@ -223,7 +219,7 @@ function bind() {
     alert('Guardado ✓');
   });
 
-  // Historial
+  
   document.querySelector('[data-action="prev-month"]')?.addEventListener('click', () => {
     state.calMonth = new Date(state.calMonth.getFullYear(), state.calMonth.getMonth()-1, 1); render();
   });
