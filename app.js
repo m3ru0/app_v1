@@ -9,7 +9,13 @@ async function boot() {
   state.logs = Object.fromEntries(logs.map(l => [l.date, l]));
   state.bestStreak = (await getItem('config','bestStreak')) || 0;
   render();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(console.error);
+  if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('./sw.js', { scope: './' })   // ⬅️ ruta relativa + scope explícito
+      .then((reg) => console.log('[SW] registrado, scope:', reg.scope))
+      .catch((err) => console.error('[SW] falló:', err));
+  });
 }
 
 async function saveLog(date, log) {
