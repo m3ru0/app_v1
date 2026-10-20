@@ -212,6 +212,7 @@ function viewHistory() {
     cells.push(`<div class="cal-day ${cls}">${d}</div>`);
   }
   const streak = computeStreak(state.logs, state.week);
+  
   return `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <button class="nav-btn" data-action="prev-month">‹</button>
@@ -223,10 +224,21 @@ function viewHistory() {
       ${cells.join('')}
     </div>
     <div class="metrics">
-      <div class="metric"><div class="val">${streak}</div><div class="lbl">Racha actual</div></div>
+      <div class="metric"><div class="val">${streak}</div><div class="lbl">Racha</div></div>
       <div class="metric"><div class="val">${state.bestStreak}</div><div class="lbl">Mejor racha</div></div>
       <div class="metric"><div class="val">${trained}</div><div class="lbl">Entrenados</div></div>
     </div>
+  </div>
+  
+  <div class="card" style="margin-top:20px;">
+    <h2>💾 Copia de seguridad</h2>
+    <p class="muted" style="margin-bottom:16px; font-size:14px;">Guarda tu rutina y racha para migrar a otro dispositivo.</p>
+    <button class="btn btn-primary" data-action="export">Exportar mis datos</button>
+    
+    <label class="btn btn-secondary" style="display:block; text-align:center; margin-top:12px;">
+      Importar archivo (.json)
+      <input type="file" id="import-input" accept=".json" style="display:none;">
+    </label>
   </div>`;
 }
 
@@ -317,10 +329,77 @@ function bind() {
 
   
   document.getElementById('timer-skip')?.addEventListener('click', stopRestTimer);
+  document.querySelector('[data-action="export"]')?.addEventListener('click', exportData);
+  document.getElementById('import-input')?.addEventListener('change', importData);
 }
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function exportData() {
+  try {
+    const week = await getItem('config', 'week');
+    const logs = await getAll('logs');
+    const bestStreak = await getItem('config', 'bestStreak') || 0;
+    
+    const data = { version: 1, week: week || DEFAULT_WEEK, logs, bestStreak };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rutinas_backup_${todayISO()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    alert('Error al exportar: ' + error.message);
+  }
+}
+
+async function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.week || !data.logs) throw new Error('El archivo no tiene el formato correcto.');
+      
+      if (confirm('¿Seguro que quieres importar estos datos? Se borrará tu rutina y progreso actual.')) {
+        // Guardar nueva config y racha
+        await setItem('config', 'week', data.week);
+        await setItem('config', 'bestStreak', data.bestStreak || 0);
+        
+        // Limpiar historial viejo
+        const db = await new Promise((res, rej) => {
+          const req = indexedDB.open('rutinas-db', 1);
+          req.onsuccess = () => res(req.result);
+          req.onerror = () => rej(req.error);
+        });
+        await new Promise((res, rej) => {
+          const tx = db.transaction('logs', 'readwrite');
+          tx.objectStore('logs').clear();
+          tx.oncomplete = () => res();
+          tx.onerror = () => rej(tx.error);
+        });
+
+        // Insertar historial nuevo
+        for (const log of data.logs) {
+          await setItem('logs', log.date, log);
+        }
+        
+        alert('¡Datos importados con éxito!');
+        window.location.reload();
+      }
+    } catch (err) {
+      alert('Error al leer el archivo: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
 }
 
 async function boot() {
